@@ -6,48 +6,51 @@ const { verifyAdminToken } = require("../middleware/verifyAdminToken");
 const { uploadHandler } = require("../middleware/upload");
 const { multipleImages } = require("../middleware/multipleImages");
 const { checkCache } = require("../middleware/redis")
+const {checkRole} = require("../middleware/checkRole")
 
 //auth
-router.put("/accounts",verifyAdminToken, adminControl.addAdmin);
-router.delete("/accounts/:id",verifyAdminToken, adminControl.delAdmin);
+router.put("/accounts",verifyAdminToken, checkRole, adminControl.addAdmin);
+router.delete("/accounts/:id",verifyAdminToken,checkRole, adminControl.delAdmin);
 router.post("/accounts/login", adminControl.Login);
-router.post("accounts/signout",verifyAdminToken, adminControl.SignOut);
-router.get("/accounts",verifyAdminToken, checkCache(), adminControl.getAdmins);
+router.post("/accounts/signout",adminControl.SignOut);
+router.get("/accounts",verifyAdminToken, checkRole, checkCache(), adminControl.getAdmins);
 router.patch("/accounts/password",verifyAdminToken, adminControl.changePass);
-router.get("/accounts/editors",verifyAdminToken, checkCache(), adminControl.getEditors);
-router.delete("/accounts/editors/:id",verifyAdminToken, adminControl.delEditor);
-router.put("/accounts/editors",verifyAdminToken, adminControl.addEditors);
-router.get("/overview", verifyAdminToken, checkCache(), adminControl.getOverview);
-router.get("/recents/bookings",verifyAdminToken, checkCache(), adminControl.getRecentBookings);
-router.get("/recents/users", verifyAdminToken, checkCache(), adminControl.getRecentUsers);
+router.get("/recents/overview", verifyAdminToken, checkRole, checkCache(), adminControl.getOverview);
+router.get("/recents",verifyAdminToken, checkRole, checkCache(), adminControl.getRecentBookings);
+router.get("/recents/users", verifyAdminToken, checkRole, checkCache(), adminControl.getRecentUsers);
 //Properties
-router.get("/properties/recents",checkCache(), adminControl.getRecentProperties);
-router.put("/properties", multipleImages, adminControl.processPhotos, adminControl.addProperty);
-router.delete("/properties/:id", adminControl.delProperty);
-router.patch("/properties/:id", multipleImages,adminControl.processPhotos, adminControl.updateProperty);
-router.get("/properties",checkCache(), adminControl.getProperties);
-router.get("/properties/:id",checkCache(), dataControl.getSingleById);
+router.get("/properties/recents",verifyAdminToken, checkRole,  checkCache(), adminControl.getRecentProperties);
+router.put("/properties",verifyAdminToken,  adminControl.addProperty);
+router.delete("/properties/:id",verifyAdminToken, checkRole, adminControl.delProperty);
+router.patch("/properties/:id",verifyAdminToken,  adminControl.updateProperty);
+router.get("/properties",verifyAdminToken, checkCache(), adminControl.getProperties);
+router.get("/properties/:id",verifyAdminToken,checkCache(), dataControl.getSingleById);
 //bookings
-router.get("/properties/bookings/search", checkCache(), bookingControl.getBookingsAdmin);
-router.put("/properties/bookings",  bookingControl.addBookingAdmin);
-router.patch("/properties/bookings/:id",  bookingControl.editBooking);
-router.patch("/properties/bookings/confirmation/:id",  bookingControl.confirmBooking);
-router.delete("/properties/bookings/cancellation/:id",  bookingControl.cancelBookingAdmin);
-router.delete("/properties/bookings/:id",  bookingControl.deleteBookingAdmin);
+router.get("/properties/bookings/search",verifyAdminToken, checkRole, checkCache(), bookingControl.getBookingsAdmin);
+router.put("/properties/bookings",verifyAdminToken, checkRole, bookingControl.addBookingAdmin);
+router.patch("/properties/bookings/:id",verifyAdminToken, checkRole, bookingControl.editBooking);
+router.patch("/properties/bookings/confirmation/:id",verifyAdminToken, checkRole, bookingControl.confirmBooking);
+router.delete("/properties/bookings/cancellation/:id",verifyAdminToken, checkRole, bookingControl.cancelBookingAdmin);
+router.delete("/properties/bookings/:id",verifyAdminToken, checkRole, bookingControl.deleteBookingAdmin);
 //blogs
-router.get("/blogs/recents",checkCache(), adminControl.getRecentBlogs);
-router.get("/blogs",checkCache(), dataControl.getBlogs);
-router.put("/blogs", uploadHandler, adminControl.addBlogs);
-router.patch("/blogs/:id", uploadHandler, adminControl.updateBlogs);
-router.delete("/blogs/:id", adminControl.delBlogs);
+router.get("/blogs/recents",verifyAdminToken, checkRole, checkCache(), adminControl.getRecentBlogs);
+router.get("/blogs",verifyAdminToken, checkCache(), dataControl.getBlogs);
+router.put("/blogs",verifyAdminToken, adminControl.addBlogs);
+router.patch("/blogs/:id",verifyAdminToken,  adminControl.updateBlogs);
+router.delete("/blogs/:id",verifyAdminToken, checkRole, adminControl.delBlogs);
 //photos
-router.get("/photos",checkCache(), dataControl.getPhotos);
-router.put("/photos", multipleImages, adminControl.addPhotos);
-router.patch("/photos/:id", uploadHandler, adminControl.updatePhoto);
-router.delete("/photos", adminControl.delPhoto);
+router.put("/photos",verifyAdminToken,  multipleImages, adminControl.addPhotos);
+router.get("/photos",verifyAdminToken,checkCache(), dataControl.getPhotos);
+router.get("/photos/:id",verifyAdminToken,checkCache(),  dataControl.getPhotoById);
+router.patch("/photos/:id",verifyAdminToken, uploadHandler, adminControl.updatePhoto);
+router.delete("/photos",verifyAdminToken, checkRole, adminControl.delPhoto);
 //reviews
-router.get("/reviews",checkCache(), dataControl.getReviews);
-router.post("/reviews", uploadHandler, adminControl.addReview);
-router.delete("/reviews/:id", adminControl.delReview);
+router.get("/reviews",verifyAdminToken,checkCache(), dataControl.getReviews);
+router.post("/reviews",verifyAdminToken, uploadHandler, adminControl.addReview);
+router.delete("/reviews/:id",verifyAdminToken, checkRole, adminControl.delReview);
+//users
+router.get("/users",verifyAdminToken, checkRole, checkCache(), adminControl.getUsers);
+router.delete("/users/:id",verifyAdminToken, checkRole, adminControl.deleteUser);
+
 
 module.exports = router;

@@ -73,6 +73,17 @@ exports.getPhotos = async (req, res) => {
   }
 };
 
+exports.getPhotoById = async (req, res) => {
+  try {
+    const {id} = req.params
+    const photo = await Photo.findById(id)
+    if(!photo) return res.status(400).json({message: "Photo Not Found"})
+      res.json(photo)
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 exports.getReviews = async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
@@ -98,7 +109,7 @@ exports.getReviews = async (req, res) => {
 exports.getBlogs = async (req, res) => {
   try {
     const {
-      title,
+      query,
       tags,
       author,
       startDate,
@@ -109,8 +120,15 @@ exports.getBlogs = async (req, res) => {
     } = req.query;
     const filter = {};
 
-    if (title) {
-      filter.title = { $regex: title, $options: "i" };
+
+    if (query) {
+      const regexQuery = new RegExp(query, "i"); // Case-insensitive regex
+      filter.$or = [
+        { title: { $regex: regexQuery } },
+        { author: { $regex: regexQuery } }, 
+        { tags: { $in: [regexQuery] } },
+             
+      ];
     }
 
     if (tags) {

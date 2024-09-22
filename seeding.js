@@ -641,22 +641,22 @@ const seed = async () => {
     }
     const blogPhotos = await Photo.find({ title: "blog" });
 
-    // await Blog.deleteMany({});
-    // for (let i = 1; i < 18; i++) {
-    //   const blog = new Blog({
-    //     title: randomText(text, 50, 120),
-    //     content: randomText(text, 200, text.length),
-    //     author: randomText(text, 7, 45),
-    //     image: blogPhotos[i - 1],
-    //     publishDate: Date.now() + genRandom(2, 16) * 86400000,
-    //     tags: genRandomArray(tags, 2, 8),
-    //     excrept: randomText(text, 120, 220),
-    //     metaTitle: randomText(text, 50, 150),
-    //     metaDescription: randomText(text, 50, 150),
-    //     metaTags: genRandomArray(tags, 2, 8),
-    //   });
-    //   await blog.save();
-    // }
+    await Blog.deleteMany({});
+    for (let i = 1; i < 18; i++) {
+      const blog = new Blog({
+        title: randomText(text, 50, 120),
+        content: randomText(text, 200, text.length),
+        author: randomText(text, 7, 45),
+        image: blogPhotos[i - 1],
+        publishDate: Date.now() + genRandom(2, 16) * 86400000,
+        tags: genRandomArray(tags, 2, 8),
+        excrept: randomText(text, 120, 220),
+        metaTitle: randomText(text, 50, 150),
+        metaDescription: randomText(text, 50, 150),
+        metaTags: genRandomArray(tags, 2, 8),
+      });
+      await blog.save();
+    }
 
     const propertyIds = await Property.find();
     await Booking.deleteMany({});

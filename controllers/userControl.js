@@ -35,6 +35,9 @@ exports.register = async (req, res) => {
     });
     const savedUser = await newUser.save();
     deleteKeys("/recents/users*");
+    deleteKeys("/recents*");
+    deleteKeys("/users*");
+
     const info = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -193,6 +196,10 @@ exports.deleteUser = async (req, res) => {
       message: "User deleted successfully!",
     });
     deleteKeys("/recents/users*");
+    deleteKeys("/recents*");
+    deleteKeys("/users*");
+
+
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }

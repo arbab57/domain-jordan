@@ -31,16 +31,14 @@ app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 app.use(cookieParser());
 app.use(express.json());
-app.use(limiter);
+// app.use(limiter);
 app.use(sanitizer);
 
 const adminRouter = require("./routes/adminRouter");
 const dataRouter = require("./routes/dataRouter");
-const editorRouter = require("./routes/editorRouter");
 const userRouter = require("./routes/userRouter");
 
 app.use("/admins", adminRouter);
-app.use("/editors", editorRouter);
 app.use("/data", dataRouter);
 app.use("/users", userRouter);
 

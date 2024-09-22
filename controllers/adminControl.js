@@ -4,14 +4,13 @@ const Property = require("../models/propertySchema");
 const Photo = require("../models/photoSchema");
 const Review = require("../models/reviewSchema");
 const Blog = require("../models/blogSchema");
-const Editor = require("../models/editorSchema");
 const User = require("../models/userSchema");
 const Booking = require("../models/bookingSchema");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { SECRET_TOKEN } = require("../config/crypto");
-const {clearCache, deleteKeys} =  require("../utils/redisUtils")
-
+const { clearCache, deleteKeys } = require("../utils/redisUtils");
+const cloudinary = require("../config/cloudinaryConfig");
 
 exports.Login = async (req, res) => {
   try {
@@ -29,9 +28,7 @@ exports.Login = async (req, res) => {
       // maxAge: 60 * 60 * 1000,
       secure: true,
     });
-    res.status(200).send({
-      message: "Admin successfully logged in",
-    });
+    res.status(200).json({ role: admin.adminRole });
   } catch (error) {
     res.status(500).json({
       message: error.message,
@@ -41,23 +38,13 @@ exports.Login = async (req, res) => {
 
 exports.SignOut = async (req, res) => {
   try {
-    const cookie = req.cookies.adminToken;
-    if (!cookie) {
-      return res.status(401).json({ message: "No token provided" });
-    }
-    jwt.verify(cookie, SECRET_TOKEN, (err, decoded) => {
-      if (err) {
-        return res.status(403).json({ message: "Invalid token" });
-      }
-      // Clear the token cookie
-      res.clearCookie("adminToken", {
-        httpOnly: true,
-        path: "/",
-        sameSite: "None",
-        secure: true,
-      });
-      return res.status(200).json({ message: "admin Sign out successfully" });
+    res.clearCookie("adminToken", {
+      httpOnly: true,
+      path: "/",
+      sameSite: "None",
+      secure: true,
     });
+    return res.status(200).json({ message: "admin Sign out successfully" });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -71,6 +58,7 @@ exports.getAdmins = async (req, res) => {
         id: admin._id,
         name: admin.name,
         email: admin.email,
+        role: admin.adminRole,
       };
     });
     res.json(adminsWithOutPassword);
@@ -83,9 +71,10 @@ exports.getAdmins = async (req, res) => {
 
 exports.addAdmin = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role } = req.body;
     if (!name) return res.status(400).json({ message: "Name is required" });
     if (!email) return res.status(400).json({ message: "Email is required" });
+    if (!role) return res.status(400).json({ message: "Role is required" });
     if (!password)
       return res.status(400).json({ message: "Password is required" });
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -93,6 +82,7 @@ exports.addAdmin = async (req, res) => {
       name: name,
       email: email,
       password: hashedPassword,
+      adminRole: role,
     });
     const savedAdmin = await newAdmin.save();
     deleteKeys("/accounts*");
@@ -105,9 +95,10 @@ exports.addAdmin = async (req, res) => {
 exports.delAdmin = async (req, res) => {
   try {
     const { id } = req.params;
-    const admin = await Admin.find().limit(2);
-    if (admin.length < 2)
-      return res.status(400).json({ msg: "Cannot delete last admin" });
+    const objectId = new mongoose.Types.ObjectId(id);
+    if (objectId.equals(req.id)) {
+      return res.status(400).json({ message: "Cannot delete logged in Admin" });
+    }
     const del = await Admin.deleteOne({ _id: id });
     deleteKeys("/accounts*");
     res.status(200).json({ message: "admin deleted" });
@@ -119,65 +110,15 @@ exports.delAdmin = async (req, res) => {
 exports.changePass = async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;
-    const id = req.id;
+    const { id } = req.id;
     const admin = await Admin.findById(id);
     const IsMatch = await bcrypt.compare(oldPassword, admin.password);
     if (!IsMatch)
       return res.status(400).json({ message: "incorrect password" });
-    const newPassHash = bcrypt.hash(newPassword, 10);
+    const newPassHash = await bcrypt.hash(newPassword, 10);
     admin.password = newPassHash;
     await admin.save();
     res.status(200).json({ message: "password changed" });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-exports.addEditors = async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-    if (!name) return res.status(400).json({ message: "Name is required" });
-    if (!email) return res.status(400).json({ message: "Email is required" });
-    if (!password)
-      return res.status(400).json({ message: "Password is required" });
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newEditor = new Editor({
-      name: name,
-      email: email,
-      password: hashedPassword,
-    });
-    const savedEditior = await newEditor.save();
-    deleteKeys("/accounts*");
-    res.status(201).json({ message: "editor added" });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-exports.getEditors = async (req, res) => {
-  try {
-    const editors = await Editor.find();
-    const editorsWithOutPassword = editors.map((editor) => {
-      return {
-        id: editor._id,
-        name: editor.name,
-        email: editor.email,
-      };
-    });
-    res.json(editorsWithOutPassword);
-  } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
-  }
-};
-
-exports.delEditor = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const del = await Editor.deleteOne({ _id: id });
-    deleteKeys("/accounts*");
-    res.status(200).json({ message: "editor deleted" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -200,11 +141,10 @@ exports.getOverview = async (req, res) => {
 
 exports.getRecentBookings = async (req, res) => {
   try {
-    const { limit = 10, page = 1 } = req.query;
+    const { limit = 5, page = 1 } = req.query;
     const pageNumber = parseInt(page, 10);
     const pageSize = parseInt(limit, 10);
     const skip = pageNumber - 1 * pageSize;
-
     const recentBookings = await Booking.find()
       .sort({ createdAt: -1 })
       .limit(pageSize)
@@ -214,13 +154,39 @@ exports.getRecentBookings = async (req, res) => {
         select: "name featuredImage",
         populate: { path: "featuredImage" },
       });
-    const totalCount = await Booking.countDocuments();
-    res.status(200).json({
-      page: pageNumber,
-      limit: pageSize,
-      totalPages: Math.ceil(totalCount / pageSize),
-      results: recentBookings,
+
+    const newUsers = await User.find().sort({ createdAt: -1 }).limit(pageSize);
+
+    const userData = newUsers.map((user) => {
+      const n = { _id: user._id, name: user.name, email: user.email };
+      return n;
     });
+
+    const latestAddedProperties = await Property.find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate({ path: "featuredImage photos" });
+    const latestUpdatedProperties = await Property.find()
+      .sort({ updatedAt: -1 })
+      .limit(5)
+      .populate({ path: "featuredImage photos" });
+    const properties = {
+      latestAdded: latestAddedProperties,
+      latestUpated: latestUpdatedProperties,
+    };
+    const latestAddedBlogs = await Blog.find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate({ path: "image" });
+    const latestUpdatedBlog = await Blog.find()
+      .sort({ updatedAt: -1 })
+      .limit(5)
+      .populate({ path: "image" });
+    const blogs = {
+      latestAdded: latestAddedBlogs,
+      latestUpated: latestUpdatedBlog,
+    };
+    res.status(200).json({ recentBookings, userData, properties, blogs });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -233,14 +199,12 @@ exports.getRecentUsers = async (req, res) => {
     const pageSize = parseInt(limit, 10);
     const skip = pageNumber - 1 * pageSize;
 
-    const newUsers = await User.find()
-      .sort({ createdAt: -1 })
-      .limit(pageSize)
+    const newUsers = await User.find().sort({ createdAt: -1 }).limit(pageSize);
 
-      const userData = newUsers.map((user) => {
-        const n = {_id: user._id, name: user.name, email: user.email}
-        return n
-      })
+    const userData = newUsers.map((user) => {
+      const n = { _id: user._id, name: user.name, email: user.email };
+      return n;
+    });
     res.status(200).json({
       page: pageNumber,
       limit: pageSize,
@@ -313,6 +277,7 @@ exports.addProperty = async (req, res) => {
       metaTags = "",
       description,
     } = req.body;
+
     if (!name) return res.status(400).json({ message: "Name is Required" });
     if (!maxOccupancy)
       return res.status(400).json({ message: "Max Occupancy is Required" });
@@ -322,14 +287,8 @@ exports.addProperty = async (req, res) => {
       return res.status(400).json({ message: "Bedding type is Required" });
     if (!description)
       return res.status(400).json({ message: "Description type is Required" });
-    if (!airCon)
-      return res
-        .status(400)
-        .json({ message: "Air Condtion availbility is Required" });
     if (!price)
       return res.status(400).json({ message: "Price Per Night is Required" });
-    if (!availabile)
-      return res.status(400).json({ message: "availbilty is Required" });
     if (!category)
       return res.status(400).json({ message: "Category is Required" });
     if (featuredImageId && req.featuredImage)
@@ -348,8 +307,8 @@ exports.addProperty = async (req, res) => {
       price,
       availabile,
       category,
-      featuredImage: featuredImageId || req.featuredImage,
-      photos: [...photosIds, ...req.photos],
+      featuredImage: featuredImageId,
+      photos: [...photosIds],
       metaTitle,
       metaDescription,
       metaTags,
@@ -357,6 +316,7 @@ exports.addProperty = async (req, res) => {
     });
     await newProperty.save();
     deleteKeys("/properties*");
+    deleteKeys("/recents*");
     res.status(200).json({ message: "Property Added" });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -373,6 +333,8 @@ exports.delProperty = async (req, res) => {
       return res.status(404).json({ message: "Property not found" });
     await Property.deleteOne({ _id: id });
     deleteKeys("/properties*");
+    deleteKeys("/recents*");
+
     res.status(200).json({ message: "Property deleted" });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -395,6 +357,7 @@ exports.updateProperty = async (req, res) => {
       metaTitle,
       metaDescription,
       metaTags,
+      description,
     } = req.body;
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id))
@@ -413,12 +376,14 @@ exports.updateProperty = async (req, res) => {
     property.price = price || property.price;
     property.featuredImage =
       featuredImageId || req.featuredImage || property.featuredImage;
-    property.photos = [...photoIds, ...req.photos] || property.photos;
+    property.photos = [...photoIds] || property.photos;
     property.metaTitle = metaTitle || property.metaTitle;
     property.metaTags = metaTags || property.metaTags;
     property.metaDescription = metaDescription || property.metaDescription;
+    property.description = description || property.description;
     await property.save();
     deleteKeys("/properties*");
+    deleteKeys("/recents*");
     res.status(200).json({ message: "Property updated" });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -464,8 +429,11 @@ exports.getProperties = async (req, res) => {
     if (sortfield === "price") {
       sortF = "price";
     }
+    if (sortfield === "date") {
+      sortF = "createdAt";
+    }
 
-    const validsortfields = ["price"];
+    const validsortfields = ["price", "createdAt"];
     const validsortorder = ["asc", "desc"];
     let sortCriteria = {};
 
@@ -540,11 +508,21 @@ exports.updatePhoto = async (req, res) => {
 exports.delPhoto = async (req, res) => {
   try {
     const { ids } = req.body;
-    console.log(req.body);
     if (!ids)
       return res.status(400).json({ message: "atlease one id is required" });
+    const photos = await Photo.find({ _id: { $in: ids } });
+    if (photos.length > 0) {
+      const promises = photos.map(async (phot) => {
+        const publicId = phot?.url?.split("property-images/")[1].split(".")[0];
+        return await cloudinary.uploader.destroy(`property-images/${publicId}`);
+      });
+      const x = await Promise.all(promises);
+    }
     await Photo.deleteMany({ _id: { $in: ids } });
     deleteKeys("/photos*");
+    deleteKeys("/properties*");
+    deleteKeys("/blogs*");
+    deleteKeys("/recents*");
     res.status(200).json({ message: "Photos deleted" });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -679,6 +657,8 @@ exports.addBlogs = async (req, res) => {
     });
     await newBlog.save();
     deleteKeys("/blogs*");
+    deleteKeys("/recents*");
+
     res.status(200).json({ message: "Blog Post Added" });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -694,6 +674,8 @@ exports.delBlogs = async (req, res) => {
     if (!blog) return res.status(404).json({ message: "Event not found" });
     await Blog.deleteOne({ _id: id });
     deleteKeys("/blogs*");
+    deleteKeys("/recents*");
+
     res.status(200).json({ message: "blog deleted" });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -738,7 +720,64 @@ exports.updateBlogs = async (req, res) => {
     blog.metaDescription = metaDescription || blog.metaDescription;
     await blog.save();
     deleteKeys("/blogs*");
+    deleteKeys("/recents*");
+
     res.status(200).json({ message: "blog updated" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.getUsers = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, query } = req.query;
+    const pageNumber = parseInt(page, 10) || 1;
+    const pageSize = parseInt(limit, 10) || 10;
+    const skip = (pageNumber - 1) * pageSize;
+
+    let filter = {};
+
+    if (query) {
+      filter.$or = [
+        { name: { $regex: query, $options: "i" } },
+        { email: { $regex: query, $options: "i" } },
+      ];
+    }
+    const users = await User.find(filter)
+      .skip(skip)
+      .limit(pageSize)
+      .sort({ createdAt: -1 });
+    const totalCount = await User.countDocuments(filter);
+    const toSend = users.map((user) => {
+      return {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.number,
+        address: user.address,
+      };
+    });
+    res.status(200).json({
+      page: pageNumber,
+      limit: pageSize,
+      totalResults: totalCount,
+      totalPages: Math.ceil(totalCount / pageSize),
+      results: toSend,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findById(id);
+    if (!user) return res.status(400).json({ message: "User not Found" });
+    await User.deleteOne({ _id: user._id });
+    deleteKeys("/users*");
+    deleteKeys("/recents/users*");
+    res.status(200).json({ message: "User Deleted" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

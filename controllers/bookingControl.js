@@ -5,6 +5,7 @@ const User = require("../models/userSchema");
 const { default: mongoose } = require("mongoose");
 const { clearCache, deleteKeys } = require("../utils/redisUtils");
 const { sendOtpEmail } = require("../config/nodemailer");
+const { options } = require("../routes/adminRouter");
 
 async function isPropertyAvailable(propertyId, checkInDate, checkOutDate) {
   try {
@@ -40,8 +41,11 @@ async function isPropertyAvailable(propertyId, checkInDate, checkOutDate) {
         },
       ],
     });
-    console.log(overlappingBookings);
-    return overlappingBookings.length === 0;
+    const result = {
+      status: overlappingBookings.length === 0,
+      overlappingBookings,
+    };
+    return result;
   } catch (error) {
     console.log(error.message);
   }
@@ -62,16 +66,6 @@ exports.addBookingAdmin = async (req, res) => {
     } = req.body;
     const prop = await Property.findById(property);
     if (!prop) return res.status(400).json({ message: "Property not Found" });
-    const available = await isPropertyAvailable(
-      property,
-      checkInDate,
-      checkOutDate
-    );
-    if (!available) {
-      return res
-        .status(400)
-        .json({ message: "Property is not available for the selected dates." });
-    }
     if (!name) return res.status(400).json({ message: "Name is Required" });
     if (!numberOfGuests)
       return res.status(400).json({ message: "Number of guests is Required" });
@@ -83,8 +77,24 @@ exports.addBookingAdmin = async (req, res) => {
       return res.status(400).json({ message: "Check In date is Required" });
     if (!checkOutDate)
       return res.status(400).json({ message: "Check out date is Required" });
+    if (checkOutDate < checkInDate)
+      return res
+        .status(400)
+        .json({ message: "Check out cannot be after check in" });
     if (!property)
       return res.status(400).json({ message: "Property is Required" });
+
+    const available = await isPropertyAvailable(
+      property,
+      checkInDate,
+      checkOutDate
+    );
+    if (!available.status) {
+      return res.status(400).json({
+        message: "Property is not available for the selected dates.",
+        overlapping: available.overlappingBookings,
+      });
+    }
 
     const checkIn = new Date(checkInDate);
     const checkOut = new Date(checkOutDate);
@@ -105,7 +115,10 @@ exports.addBookingAdmin = async (req, res) => {
     prop.bookings.push(newBooking);
     await prop.save();
     deleteKeys("/properties/bookings/search*");
-    deleteKeys("/recents/bookings*");
+    deleteKeys("/recents*");
+    deleteKeys("/properties*");
+
+
     return res.status(201).json({ message: "New Booking Added" });
   } catch (error) {
     return res.status(500).json({ message: error.message });
@@ -174,6 +187,7 @@ exports.addBookingUser = async (req, res) => {
     await user.save();
     deleteKeys(`/bookings/${userId}*`);
     deleteKeys("/properties*");
+    deleteKeys("/recents*");
     const info = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -226,12 +240,16 @@ exports.getBookingsAdmin = async (req, res) => {
     const sortCriteria = sortorder === "desc" ? sortObjectDesc : sortObjectAsc;
 
     let filter = {};
-
     if (query) {
+      const isValidObjectId = mongoose.Types.ObjectId.isValid(query);
       filter.$or = [
         { name: { $regex: query, $options: "i" } },
-        { propertyName: { $regex: query, $options: "i" } },
+        { email: { $regex: query, $options: "i" } },
       ];
+
+      if (isValidObjectId) {
+        filter.$or.push({ _id: new mongoose.Types.ObjectId(query) });
+      }
     }
 
     if (bookingStatus) {
@@ -264,6 +282,7 @@ exports.getBookingsAdmin = async (req, res) => {
       results: bookings,
     });
   } catch (error) {
+    console.log(error.message)
     res.status(500).json({ message: error.message });
   }
 };
@@ -398,20 +417,32 @@ exports.editBooking = async (req, res) => {
     } = req.body;
     const booking = await Booking.findById(id);
     if (!booking) return res.status(400).json({ message: "Booking not found" });
-    if (property || checkInDate || checkOutDate) {
+    if (checkInDate || checkOutDate) {
       const available = await isPropertyAvailable(
-        property || booking.property,
+        booking.property,
         checkInDate || booking.checkInDate,
         checkOutDate || booking.checkOutDate
       );
-      if (!available) {
+      if (!available.status) {
         return res.status(400).json({
           message: "Property is not available for the selected dates.",
+          overlapping: available.overlappingBookings,
         });
       }
     }
-    const checkIn = new Date(checkInDate);
-    const checkOut = new Date(checkOutDate);
+    let checkIn;
+    let checkOut;
+
+    if (checkInDate) {
+      checkIn = new Date(checkInDate);
+    } else {
+      checkIn = booking.checkInDate;
+    }
+    if (checkOutDate) {
+      checkOut = new Date(checkOutDate);
+    } else {
+      checkIn = booking.checkOutDate;
+    }
 
     booking.name = name || booking.name;
     booking.email = email || booking.email;
@@ -424,7 +455,7 @@ exports.editBooking = async (req, res) => {
     booking.bookingStatus = bookingStatus || booking.bookingStatus;
     const savedBooking = await booking.save();
     deleteKeys("/bookings*");
-    deleteKeys("/recents/bookings*");
+    deleteKeys("/recents*");
     deleteKeys("/properties*");
 
     if (
@@ -473,7 +504,7 @@ exports.confirmBooking = async (req, res) => {
     await booking.save();
     const user = await User.findById(booking.user);
     deleteKeys("/bookings*");
-    deleteKeys("/recents/bookings*");
+    deleteKeys("/recents*");
     deleteKeys("/properties*");
     const info = `<!DOCTYPE html>
       <html lang="en">
@@ -516,7 +547,7 @@ exports.cancelBookingAdmin = async (req, res) => {
     await booking.save();
     const user = await User.findById(booking.user);
     deleteKeys("/bookings*");
-    deleteKeys("/recents/bookings*");
+    deleteKeys("/recents*");
     deleteKeys("/properties*");
     const info = `<!DOCTYPE html>
 <html lang="en">
@@ -610,23 +641,26 @@ exports.deleteBookingAdmin = async (req, res) => {
     const booking = await Booking.findById(id);
     if (!booking) return res.status(400).json({ message: "Booking not found" });
     const property = await Property.findById(booking.property);
-    await Booking.deleteOne({ _id: id });
-    property.bookings = property?.bookings.filter(
-      (bookin) => !bookin._id.equals(booking._id)
-    );
-    await property.save();
+    if (property) {
+      property.bookings = property?.bookings.filter(
+        (bookin) => !bookin._id.equals(booking._id)
+      );
+      await property.save();
+    }
     if (booking?.user) {
       const user = await User.findById(booking.user);
-      user.bookings = user.bookings.filter(
+      user.bookings = user.bookings?.filter(
         (bookin) => !bookin._id.equals(booking._id)
       );
       await user.save();
     }
+    await Booking.deleteOne({ _id: id });
     deleteKeys("/bookings*");
-    deleteKeys("/recents/bookings*");
+    deleteKeys("/recents*");
     deleteKeys("/properties*");
     return res.status(200).json({ message: "Booking Deleted Successfully" });
   } catch (error) {
+    console.log(error);
     return res.status(500).json({ message: error.message });
   }
 };

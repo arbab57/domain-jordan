@@ -5,6 +5,7 @@ const { SECRET_TOKEN } = require("../config/crypto")
 exports.verifyAdminToken = async (req, res, next) => {
 
     try {
+
         const cookie = req.cookies.adminToken;
         if (!cookie) {
             return res.status(401).json({
@@ -14,7 +15,7 @@ exports.verifyAdminToken = async (req, res, next) => {
         jwt.verify(cookie, SECRET_TOKEN, (err, decode) => {
             if (err) {
                 return res.status(403).json({
-                    Message: "Invalid Token"
+                    message: "Invalid Token"
                 })
             }
             req.id = decode.id;

@@ -29,7 +29,7 @@ const formatFilename = (originalName) => {
     .replace(/[^a-z0-9]/g, "-")
     .replace(/-+/g, "-");
 
-  return `${sanitizedFileName}.${extension}`;
+  return `${sanitizedFileName}`;
 };
 
 // Cloudinary storage configuration
@@ -93,6 +93,7 @@ exports.multipleImages = (req, res, next) => {
             return res.status(400).json({ message: err.message });
         }
       } else if (err) {
+        console.log(err)
         return res
           .status(500)
           .json({ message: "An error occurred while uploading the file." });
