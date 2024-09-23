@@ -6,16 +6,16 @@ const cors = require("cors");
 require("dotenv").config();
 
 const corsOptions = {
-  origin: true, // Replace with your frontend's origin
+  origin: true, 
   methods: "GET,POST,DELETE,PUT,PATCH",
-  credentials: true, // Allow credentials (cookies) to be sent
+  credentials: true, 
   optionsSuccessStatus: 204,
 };
 
 const rateLimit = require("express-rate-limit");
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: 100, 
 });
 const mongoSanitize = require("express-mongo-sanitize");
 const sanitizer = mongoSanitize({
@@ -31,7 +31,7 @@ app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 app.use(cookieParser());
 app.use(express.json());
-// app.use(limiter);
+app.use(limiter);
 app.use(sanitizer);
 
 const adminRouter = require("./routes/adminRouter");

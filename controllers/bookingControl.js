@@ -3,9 +3,8 @@ const Property = require("../models/propertySchema");
 const redisClient = require("../config/redis");
 const User = require("../models/userSchema");
 const { default: mongoose } = require("mongoose");
-const { clearCache, deleteKeys } = require("../utils/redisUtils");
+const { deleteKeys } = require("../utils/redisUtils");
 const { sendOtpEmail } = require("../config/nodemailer");
-const { options } = require("../routes/adminRouter");
 
 async function isPropertyAvailable(propertyId, checkInDate, checkOutDate) {
   try {
@@ -50,174 +49,6 @@ async function isPropertyAvailable(propertyId, checkInDate, checkOutDate) {
     console.log(error.message);
   }
 }
-
-exports.addBookingAdmin = async (req, res) => {
-  try {
-    const {
-      name,
-      email,
-      phone,
-      numberOfGuests,
-      property,
-      checkInDate,
-      checkOutDate,
-      paymentStatus,
-      bookingStatus,
-    } = req.body;
-    const prop = await Property.findById(property);
-    if (!prop) return res.status(400).json({ message: "Property not Found" });
-    if (!name) return res.status(400).json({ message: "Name is Required" });
-    if (!numberOfGuests)
-      return res.status(400).json({ message: "Number of guests is Required" });
-    if (!email && !phone)
-      return res
-        .status(400)
-        .json({ message: "Email or Phone Number is Required" });
-    if (!checkInDate)
-      return res.status(400).json({ message: "Check In date is Required" });
-    if (!checkOutDate)
-      return res.status(400).json({ message: "Check out date is Required" });
-    if (checkOutDate < checkInDate)
-      return res
-        .status(400)
-        .json({ message: "Check out cannot be after check in" });
-    if (!property)
-      return res.status(400).json({ message: "Property is Required" });
-
-    const available = await isPropertyAvailable(
-      property,
-      checkInDate,
-      checkOutDate
-    );
-    if (!available.status) {
-      return res.status(400).json({
-        message: "Property is not available for the selected dates.",
-        overlapping: available.overlappingBookings,
-      });
-    }
-
-    const checkIn = new Date(checkInDate);
-    const checkOut = new Date(checkOutDate);
-
-    const newBooking = new Booking({
-      name: name,
-      email: email,
-      phone: phone,
-      numberOfGuests: numberOfGuests,
-      property: property,
-      checkInDate: checkIn,
-      checkOutDate: checkOut,
-      paymentStatus: paymentStatus,
-      bookingStatus: bookingStatus,
-      propertyName: prop?.name,
-    });
-    await newBooking.save();
-    prop.bookings.push(newBooking);
-    await prop.save();
-    deleteKeys("/properties/bookings/search*");
-    deleteKeys("/recents*");
-    deleteKeys("/properties*");
-
-
-    return res.status(201).json({ message: "New Booking Added" });
-  } catch (error) {
-    return res.status(500).json({ message: error.message });
-  }
-};
-
-exports.addBookingUser = async (req, res) => {
-  try {
-    const userId = req.id;
-    const {
-      name,
-      email,
-      phone,
-      numberOfGuests,
-      propertyId,
-      checkInDate,
-      checkOutDate,
-    } = req.body;
-    if (!propertyId)
-      return res.status(400).json({ message: "Property is Required" });
-    const prop = await Property.findById(propertyId);
-    if (!prop) return res.status(400).json({ message: "Property not Found" });
-    if (!checkInDate)
-      return res.status(400).json({ message: "Check In date is Required" });
-    if (!checkOutDate)
-      return res.status(400).json({ message: "Check out date is Required" });
-    const available = await isPropertyAvailable(
-      propertyId,
-      checkInDate,
-      checkOutDate
-    );
-    if (!available) {
-      return res
-        .status(400)
-        .json({ message: "Property is not available for the selected dates." });
-    }
-    if (!name) return res.status(400).json({ message: "Name is Required" });
-    if (!numberOfGuests)
-      return res.status(400).json({ message: "Number of guests is Required" });
-    if (numberOfGuests > prop.maxOccupancy)
-      return res.status(400).json({ message: "Max occupancy reached" });
-    if (!email && !phone)
-      return res
-        .status(400)
-        .json({ message: "Email or Phone Number is Required" });
-
-    const checkIn = new Date(checkInDate);
-    const checkOut = new Date(checkOutDate);
-    const user = await User.findById(userId);
-
-    const newBooking = new Booking({
-      name: name,
-      email: email || user.email,
-      phone: phone,
-      numberOfGuests: numberOfGuests,
-      property: propertyId,
-      checkInDate: checkIn,
-      checkOutDate: checkOut,
-      propertyName: prop?.name,
-      user: userId,
-    });
-    const savedBooking = await newBooking.save();
-    prop.bookings.push(newBooking);
-    await prop.save();
-    user.bookings.push(newBooking);
-    await user.save();
-    deleteKeys(`/bookings/${userId}*`);
-    deleteKeys("/properties*");
-    deleteKeys("/recents*");
-    const info = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>New Booking Notification</title>
-</head>
-<body>
-    <h1>New Booking Received!</h1>
-    <p>Hello Admin,</p>
-    <p>A new booking has been made on your platform.</p>
-    <p><strong>Booking Details:</strong></p>
-    <ul>
-        <li><strong>Booking ID:</strong> ${savedBooking._id}</li>
-        <li><strong>Property:</strong> ${savedBooking.propertyName}</li>
-        <li><strong>Guest Name:</strong> ${savedBooking.name}</li>
-        <li><strong>Check-In Date:</strong> ${savedBooking.checkInDate}}</li>
-        <li><strong>Check-Out Date:</strong> ${savedBooking.checkOutDate}</li>
-    </ul>
-    <p>Please log in to the admin panel to view and manage the booking.</p>
-    <p>Thank you,</p>
-    <p>Your Team</p>
-</body>
-</html>`;
-    sendOtpEmail(process.env.ADMIN_EMAIL, info, "New Booking");
-    return res.status(201).json({ message: "New Booking Added" });
-  } catch (error) {
-    return res.status(500).json({ message: error.message });
-  }
-};
 
 exports.getBookingsAdmin = async (req, res) => {
   try {
@@ -283,120 +114,6 @@ exports.getBookingsAdmin = async (req, res) => {
     });
   } catch (error) {
     console.log(error.message)
-    res.status(500).json({ message: error.message });
-  }
-};
-
-exports.getUserBookings = async (req, res) => {
-  try {
-    const userId = req.id;
-    const { sortorder } = req.query;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-    sortObjectAsc = { createdAt: -1 };
-    sortObjectDesc = { createdAt: 1 };
-    const sort = sortorder === "desc" ? sortObjectDesc : sortObjectAsc;
-
-    const user = await User.findById(userId)
-      .populate({
-        path: "bookings",
-        options: { skip, limit, sort },
-        populate: {
-          path: "property",
-          select: "name price featuredImage category",
-          populate: { path: "featuredImage", select: "url title" },
-        },
-      })
-      .exec();
-    const totalCount = user.bookings.length;
-
-    res.status(200).json({
-      page: page,
-      limit: limit,
-      totalResults: totalCount,
-      totalPages: Math.ceil(totalCount / limit),
-      results: user.bookings,
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-exports.getUserUpcommingBookings = async (req, res) => {
-  try {
-    const userId = req.id;
-    const { sortorder } = req.query;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-    sortObjectAsc = { createdAt: -1 };
-    sortObjectDesc = { createdAt: 1 };
-    const sort = sortorder === "desc" ? sortObjectDesc : sortObjectAsc;
-    const user = await User.findById(userId);
-    const currentDate = new Date(Date.now());
-    const bookings = await Booking.find({
-      _id: { $in: user.bookings },
-      checkInDate: { $gte: currentDate },
-    })
-      .sort(sort)
-      .limit(limit)
-      .skip(skip)
-      .populate({
-        path: "property",
-        select: "name price featuredImage category",
-        populate: { path: "featuredImage", select: "url title" },
-      })
-      .populate({ path: "user", select: "name email" });
-    const totalCount = user.bookings.length;
-
-    res.status(200).json({
-      page: page,
-      limit: limit,
-      totalResults: totalCount,
-      totalPages: Math.ceil(totalCount / limit),
-      results: bookings,
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-exports.getUserPastBookings = async (req, res) => {
-  try {
-    const userId = req.id;
-    const { sortorder } = req.query;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-    sortObjectAsc = { createdAt: -1 };
-    sortObjectDesc = { createdAt: 1 };
-    const sort = sortorder === "desc" ? sortObjectDesc : sortObjectAsc;
-    const user = await User.findById(userId);
-    const currentDate = new Date(Date.now());
-    const bookings = await Booking.find({
-      _id: { $in: user.bookings },
-      checkInDate: { $lte: currentDate },
-    })
-      .sort(sort)
-      .limit(limit)
-      .skip(skip)
-      .populate({
-        path: "property",
-        select: "name price featuredImage category",
-        populate: { path: "featuredImage", select: "url title" },
-      })
-      .populate({ path: "user", select: "name email" });
-    const totalCount = user.bookings.length;
-
-    res.status(200).json({
-      page: page,
-      limit: limit,
-      totalResults: totalCount,
-      totalPages: Math.ceil(totalCount / limit),
-      results: bookings,
-    });
-  } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
@@ -581,6 +298,318 @@ exports.cancelBookingAdmin = async (req, res) => {
   }
 };
 
+exports.deleteBookingAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const booking = await Booking.findById(id);
+    if (!booking) return res.status(400).json({ message: "Booking not found" });
+    const property = await Property.findById(booking.property);
+    if (property) {
+      property.bookings = property?.bookings.filter(
+        (bookin) => !bookin._id.equals(booking._id)
+      );
+      await property.save();
+    }
+    if (booking?.user) {
+      const user = await User.findById(booking.user);
+      user.bookings = user.bookings?.filter(
+        (bookin) => !bookin._id.equals(booking._id)
+      );
+      await user.save();
+    }
+    await Booking.deleteOne({ _id: id });
+    deleteKeys("/bookings*");
+    deleteKeys("/recents*");
+    deleteKeys("/properties*");
+    return res.status(200).json({ message: "Booking Deleted Successfully" });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+exports.addBookingAdmin = async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      phone,
+      numberOfGuests,
+      property,
+      checkInDate,
+      checkOutDate,
+      paymentStatus,
+      bookingStatus,
+    } = req.body;
+    const prop = await Property.findById(property);
+    if (!prop) return res.status(400).json({ message: "Property not Found" });
+    if (!name) return res.status(400).json({ message: "Name is Required" });
+    if (!numberOfGuests)
+      return res.status(400).json({ message: "Number of guests is Required" });
+    if (!email && !phone)
+      return res
+        .status(400)
+        .json({ message: "Email or Phone Number is Required" });
+    if (!checkInDate)
+      return res.status(400).json({ message: "Check In date is Required" });
+    if (!checkOutDate)
+      return res.status(400).json({ message: "Check out date is Required" });
+    if (checkOutDate < checkInDate)
+      return res
+        .status(400)
+        .json({ message: "Check out cannot be after check in" });
+    if (!property)
+      return res.status(400).json({ message: "Property is Required" });
+
+    const available = await isPropertyAvailable(
+      property,
+      checkInDate,
+      checkOutDate
+    );
+    if (!available.status) {
+      return res.status(400).json({
+        message: "Property is not available for the selected dates.",
+        overlapping: available.overlappingBookings,
+      });
+    }
+
+    const checkIn = new Date(checkInDate);
+    const checkOut = new Date(checkOutDate);
+
+    const newBooking = new Booking({
+      name: name,
+      email: email,
+      phone: phone,
+      numberOfGuests: numberOfGuests,
+      property: property,
+      checkInDate: checkIn,
+      checkOutDate: checkOut,
+      paymentStatus: paymentStatus,
+      bookingStatus: bookingStatus,
+      propertyName: prop?.name,
+    });
+    await newBooking.save();
+    prop.bookings.push(newBooking);
+    await prop.save();
+    deleteKeys("/properties/bookings/search*");
+    deleteKeys("/recents*");
+    deleteKeys("/properties*");
+
+
+    return res.status(201).json({ message: "New Booking Added" });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+exports.addBookingUser = async (req, res) => {
+  try {
+    const userId = req.id;
+    const {
+      name,
+      email,
+      phone,
+      numberOfGuests,
+      propertyId,
+      checkInDate,
+      checkOutDate,
+    } = req.body;
+    if (!propertyId)
+      return res.status(400).json({ message: "Property is Required" });
+    const prop = await Property.findById(propertyId);
+    if (!prop) return res.status(400).json({ message: "Property not Found" });
+    if (!checkInDate)
+      return res.status(400).json({ message: "Check In date is Required" });
+    if (!checkOutDate)
+      return res.status(400).json({ message: "Check out date is Required" });
+    const available = await isPropertyAvailable(
+      propertyId,
+      checkInDate,
+      checkOutDate
+    );
+    if (!available) {
+      return res
+        .status(400)
+        .json({ message: "Property is not available for the selected dates." });
+    }
+    if (!name) return res.status(400).json({ message: "Name is Required" });
+    if (!numberOfGuests)
+      return res.status(400).json({ message: "Number of guests is Required" });
+    if (numberOfGuests > prop.maxOccupancy)
+      return res.status(400).json({ message: "Max occupancy reached" });
+    if (!email && !phone)
+      return res
+        .status(400)
+        .json({ message: "Email or Phone Number is Required" });
+
+    const checkIn = new Date(checkInDate);
+    const checkOut = new Date(checkOutDate);
+    const user = await User.findById(userId);
+
+    const newBooking = new Booking({
+      name: name,
+      email: email || user.email,
+      phone: phone,
+      numberOfGuests: numberOfGuests,
+      property: propertyId,
+      checkInDate: checkIn,
+      checkOutDate: checkOut,
+      propertyName: prop?.name,
+      user: userId,
+    });
+    const savedBooking = await newBooking.save();
+    prop.bookings.push(newBooking);
+    await prop.save();
+    user.bookings.push(newBooking);
+    await user.save();
+    deleteKeys(`/bookings/${userId}*`);
+    deleteKeys("/properties*");
+    deleteKeys("/recents*");
+    const info = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Booking Notification</title>
+</head>
+<body>
+    <h1>New Booking Received!</h1>
+    <p>Hello Admin,</p>
+    <p>A new booking has been made on your platform.</p>
+    <p><strong>Booking Details:</strong></p>
+    <ul>
+        <li><strong>Booking ID:</strong> ${savedBooking._id}</li>
+        <li><strong>Property:</strong> ${savedBooking.propertyName}</li>
+        <li><strong>Guest Name:</strong> ${savedBooking.name}</li>
+        <li><strong>Check-In Date:</strong> ${savedBooking.checkInDate}}</li>
+        <li><strong>Check-Out Date:</strong> ${savedBooking.checkOutDate}</li>
+    </ul>
+    <p>Please log in to the admin panel to view and manage the booking.</p>
+    <p>Thank you,</p>
+    <p>Your Team</p>
+</body>
+</html>`;
+    sendOtpEmail(process.env.ADMIN_EMAIL, info, "New Booking");
+    return res.status(201).json({ message: "New Booking Added" });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+exports.getUserBookings = async (req, res) => {
+  try {
+    const userId = req.id;
+    const { sortorder } = req.query;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    sortObjectAsc = { createdAt: -1 };
+    sortObjectDesc = { createdAt: 1 };
+    const sort = sortorder === "desc" ? sortObjectDesc : sortObjectAsc;
+
+    const user = await User.findById(userId)
+      .populate({
+        path: "bookings",
+        options: { skip, limit, sort },
+        populate: {
+          path: "property",
+          select: "name price featuredImage category",
+          populate: { path: "featuredImage", select: "url title" },
+        },
+      })
+      .exec();
+    const totalCount = user.bookings.length;
+
+    res.status(200).json({
+      page: page,
+      limit: limit,
+      totalResults: totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+      results: user.bookings,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.getUserUpcommingBookings = async (req, res) => {
+  try {
+    const userId = req.id;
+    const { sortorder } = req.query;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    sortObjectAsc = { createdAt: -1 };
+    sortObjectDesc = { createdAt: 1 };
+    const sort = sortorder === "desc" ? sortObjectDesc : sortObjectAsc;
+    const user = await User.findById(userId);
+    const currentDate = new Date(Date.now());
+    const bookings = await Booking.find({
+      _id: { $in: user.bookings },
+      checkInDate: { $gte: currentDate },
+    })
+      .sort(sort)
+      .limit(limit)
+      .skip(skip)
+      .populate({
+        path: "property",
+        select: "name price featuredImage category",
+        populate: { path: "featuredImage", select: "url title" },
+      })
+      .populate({ path: "user", select: "name email" });
+    const totalCount = user.bookings.length;
+
+    res.status(200).json({
+      page: page,
+      limit: limit,
+      totalResults: totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+      results: bookings,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.getUserPastBookings = async (req, res) => {
+  try {
+    const userId = req.id;
+    const { sortorder } = req.query;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    sortObjectAsc = { createdAt: -1 };
+    sortObjectDesc = { createdAt: 1 };
+    const sort = sortorder === "desc" ? sortObjectDesc : sortObjectAsc;
+    const user = await User.findById(userId);
+    const currentDate = new Date(Date.now());
+    const bookings = await Booking.find({
+      _id: { $in: user.bookings },
+      checkInDate: { $lte: currentDate },
+    })
+      .sort(sort)
+      .limit(limit)
+      .skip(skip)
+      .populate({
+        path: "property",
+        select: "name price featuredImage category",
+        populate: { path: "featuredImage", select: "url title" },
+      })
+      .populate({ path: "user", select: "name email" });
+    const totalCount = user.bookings.length;
+
+    res.status(200).json({
+      page: page,
+      limit: limit,
+      totalResults: totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+      results: bookings,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 exports.cancelBooking = async (req, res) => {
   try {
     const userId = req.id;
@@ -635,32 +664,3 @@ exports.cancelBooking = async (req, res) => {
   }
 };
 
-exports.deleteBookingAdmin = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const booking = await Booking.findById(id);
-    if (!booking) return res.status(400).json({ message: "Booking not found" });
-    const property = await Property.findById(booking.property);
-    if (property) {
-      property.bookings = property?.bookings.filter(
-        (bookin) => !bookin._id.equals(booking._id)
-      );
-      await property.save();
-    }
-    if (booking?.user) {
-      const user = await User.findById(booking.user);
-      user.bookings = user.bookings?.filter(
-        (bookin) => !bookin._id.equals(booking._id)
-      );
-      await user.save();
-    }
-    await Booking.deleteOne({ _id: id });
-    deleteKeys("/bookings*");
-    deleteKeys("/recents*");
-    deleteKeys("/properties*");
-    return res.status(200).json({ message: "Booking Deleted Successfully" });
-  } catch (error) {
-    console.log(error);
-    return res.status(500).json({ message: error.message });
-  }
-};

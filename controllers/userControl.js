@@ -7,7 +7,6 @@ const { OAuth2Client } = require("google-auth-library");
 const { sendOtpEmail } = require("../config/nodemailer");
 const client = new OAuth2Client(process.env.clientId);
 
-// Controller for user registeration
 exports.register = async (req, res) => {
   const { name, email, number, address, password } = req.body;
   try {
@@ -159,7 +158,6 @@ exports.facebookAuth = async (req, res) => {
   }
 };
 
-// Controller for user signout
 exports.SignOut = async (req, res) => {
   try {
     const cookie = req.cookies.userToken;
@@ -184,7 +182,6 @@ exports.SignOut = async (req, res) => {
   }
 };
 
-// Controller to delete user account
 exports.deleteUser = async (req, res) => {
   try {
     const userId = req.id;
@@ -198,14 +195,11 @@ exports.deleteUser = async (req, res) => {
     deleteKeys("/recents/users*");
     deleteKeys("/recents*");
     deleteKeys("/users*");
-
-
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
 };
 
-// Too change the user password!
 exports.changePassword = async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;

@@ -39,13 +39,4 @@ router.get('/auth/facebook/callback',
 
 
 
-
-
-
-
-
-// router.post("/signin-google", authControll.googleAuth);
-// router.post("/request-otp", authControll.requestOtp);
-
-
 module.exports = router

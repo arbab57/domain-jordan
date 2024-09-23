@@ -17,15 +17,15 @@ const propertySchema = new mongoose.Schema(
     metaDescription: { type: String },
     metaTags: [{ type: String }],
     bookings: [{ type: mongoose.Types.ObjectId, ref: "Booking" }],
-    bookingCount: {type: Number, default: 0}
+    bookingCount: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
 
-propertySchema.pre('save', function(next){
-  const bookingNumber = this.bookings.length
-  this.bookingCount = bookingNumber
-  next()
-})
+propertySchema.pre("save", function (next) {
+  const bookingNumber = this.bookings.length;
+  this.bookingCount = bookingNumber;
+  next();
+});
 
 module.exports = mongoose.model("Property", propertySchema);

@@ -2,28 +2,18 @@ const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("../config/cloudinaryConfig");
 const { v4: uuidv4 } = require("uuid");
-const Photo = require("../models/photoSchema");
 
 const formatDate = (date) => {
   return date
     .toISOString()
     .replace(/[^0-9]/g, "")
-    .slice(0, 14); // YYYYMMDDHHMMSS format
+    .slice(0, 14);
 };
 
-// const formatFilename = (originalName) => {
-//   return originalName
-//     .toLowerCase()
-//     .replace(/[^a-z0-9]/g, "-")
-//     .replace(/-+/g, "-");
-// };
-
 const formatFilename = (originalName) => {
-  // Separate the name and extension
   const name = originalName.substring(0, originalName.lastIndexOf("."));
   const extension = originalName.substring(originalName.lastIndexOf(".") + 1);
 
-  // Format the name (replace non-alphanumeric characters)
   const sanitizedFileName = name
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "-")
@@ -32,7 +22,6 @@ const formatFilename = (originalName) => {
   return `${sanitizedFileName}`;
 };
 
-// Cloudinary storage configuration
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
@@ -50,7 +39,6 @@ const storage = new CloudinaryStorage({
   },
 });
 
-// File filter for only allowing image files
 const fileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png|webp|bmp|tiff/;
   const mimetype = allowedTypes.test(file.mimetype);
@@ -61,11 +49,10 @@ const fileFilter = (req, file, cb) => {
   if (mimetype && extname) {
     return cb(null, true);
   } else {
-    return cb(new multer.MulterError("LIMIT_UNEXPECTED_FILE", file), false); // Pass a multer error
+    return cb(new multer.MulterError("LIMIT_UNEXPECTED_FILE", file), false);
   }
 };
 
-// Multer configuration
 const upload = multer({
   storage,
   limits: { fileSize: 4000000 }, // 1MB limit
@@ -75,7 +62,6 @@ const upload = multer({
   { name: "photos", maxCount: 20 },
 ]);
 
-// Middleware to handle Multer errors and file processing
 exports.multipleImages = (req, res, next) => {
   try {
     upload(req, res, function (err) {
@@ -93,7 +79,7 @@ exports.multipleImages = (req, res, next) => {
             return res.status(400).json({ message: err.message });
         }
       } else if (err) {
-        console.log(err)
+        console.log(err);
         return res
           .status(500)
           .json({ message: "An error occurred while uploading the file." });
