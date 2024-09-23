@@ -782,3 +782,11 @@ exports.deleteUser = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+exports.check = async (req, res) => {
+  try {
+    res.status(200).json({message: "Logged in"})
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

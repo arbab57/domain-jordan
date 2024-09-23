@@ -51,6 +51,9 @@ router.delete("/reviews/:id",verifyAdminToken, checkRole, adminControl.delReview
 //users
 router.get("/users",verifyAdminToken, checkRole, checkCache(), adminControl.getUsers);
 router.delete("/users/:id",verifyAdminToken, checkRole, adminControl.deleteUser);
+//
+router.get("/check",verifyAdminToken, adminControl.check);
+
 
 
 module.exports = router;
